@@ -12,8 +12,15 @@ import adafruit_dotstar
 from adafruit_fancyled.adafruit_fancyled import CHSV, CRGB
 
 
-class gameRGBGuardian():
-    __name__ = "gameRGBGuardian"
+class gameColorGuardian():
+    __name__ = "gameColorGuardian"
+
+
+    GAME_STANDBY = 0
+    GAME_RUNNING = 1
+    GAME_OVER = 2
+    GAME_SUCCESS = 3
+
 
     target_colors = [
         CRGB(1.0, 0.0, 0.0),
@@ -24,13 +31,13 @@ class gameRGBGuardian():
     def __init__(self, *,):
         print("\n"*2)
         print(40 * "*")
-        print("1D Game RGB Guardian")
+        print("1D Game Color Guardian")
         print(40 * "*")
 
-        self.brightness = 0.5
+        self.brightness = 0.1
         self.pixel_count = 144
         self.hue = 0.0
-        self.game_running = False
+        self.state = self.GAME_STANDBY
 
         self.bullet_color = CRGB(0,0,0)
         self.bullet_position = 0
@@ -88,25 +95,30 @@ class gameRGBGuardian():
             # print("blue")
             self.bullet_set(CRGB(0,0,1.0))
         if not self.btnWHITE.value:
-            print("start!")
-            self.game_rest()
-            self.game_running = True
+            self.game_start()
 
 
-    def rainbow_update(self):
-        """based on CircuitPython Essentials DotStar example"""
-
-        if self.hue > 1.0:
-            self.hue = 0.0
-        else:
-            self.hue += 0.001
-
+    def standby_draw(self):
+        for i in range(self.pixel_count):
+            pixel_pos = helper.map_to_01(i, 0, self.pixel_count)
+            color = CHSV(self.hue + pixel_pos)
+            # handle gamma and global brightness
+            color_rgb = fancy.gamma_adjust(color, brightness=0.01)
+            self.pixels[i] = color_rgb.pack()
+    
+    def rainbow_draw(self):
         for i in range(self.pixel_count):
             pixel_pos = helper.map_to_01(i, 0, self.pixel_count)
             color = CHSV(self.hue + pixel_pos)
             # handle gamma and global brightness
             color_rgb = fancy.gamma_adjust(color, brightness=self.brightness)
             self.pixels[i] = color_rgb.pack()
+   
+    def rainbow_update(self):
+        if self.hue > 1.0:
+            self.hue = 0.0
+        else:
+            self.hue += 0.001
 
     def bullet_set(self, color):
         self.pixels[self.bullet_position - 1 ] = CRGB(0,0,0).pack()
@@ -136,8 +148,6 @@ class gameRGBGuardian():
         if (time.monotonic() - self.target_last_update) > self.target_speed:
             self.target_last_update = time.monotonic()
             self.target_position -= 1
-            if self.target_position < 1:
-                self.game_over()
 
     def game_rest(self):
         self.targets = []
@@ -153,42 +163,65 @@ class gameRGBGuardian():
 
         self.target_position = self.pixel_count - len(self.targets)
         self.pixels.fill(0)
+  
+    def game_start(self):
+        print("start!")
+        self.game_rest()
+        self.state = self.GAME_RUNNING
 
     def game_over(self):
         print("Game Over")
         self.pixels.fill(0)
-        self.game_running = False
+        self.state = self.GAME_STANDBY
+    
+    def game_success(self):
+        print("Yeah!")
+        self.pixels.fill(0)
+        self.state = self.GAME_SUCCESS
 
 
     def game_next_step(self):
-        if self.game_running:
-            self.bullet_update()
-            self.target_update()
+        self.bullet_update()
+        self.target_update()
+        
+        if self.target_position < 1:
+            self.game_over()
 
-            if self.target_position == self.bullet_position:
-                # print(f"hit! target: {self.targets[0]}; ")
+        if self.target_position == self.bullet_position:
+            # print(f"hit! target: {self.targets[0]}; ")
+            # print(f"target", self.targets[0])
+            # print(f"bullet_color", self.bullet_color)
+            if self.targets[0].pack() == self.bullet_color.pack():
                 print(f"hit!")
-                print(f"target", self.targets[0])
-                print(f"bullet_color", self.bullet_color)
-                if self.targets[0].pack() == self.bullet_color.pack():
-                    self.targets.pop(0)
-                    self.bullet_color = 0
-                    self.bullet_position = 0
+                self.targets.pop(0)
+                self.bullet_color = CRGB(0)
+                self.bullet_position = 0
+                print(f"self.targets",self.targets)
+                if len(self.targets) <= 0:
+                    self.game_success()
 
+    def game_update(self):
+        if self.state == self.GAME_STANDBY:
+            self.standby_draw()
+        elif self.state == self.GAME_RUNNING:
+            self.bullet_draw()
+            self.target_draw()
+            self.pixels.show()
+            self.game_next_step()
+        elif self.state == self.GAME_OVER:
+            self.game_over()
+        elif self.state == self.GAME_SUCCESS:
+            self.rainbow_draw()
+            self.rainbow_update()
+        self.pixels.show()
 
     def main_loop(self):
         self.button_update()
-        # self.rainbow_update()
-        self.bullet_draw()
-        self.target_draw()
-        self.pixels.show()
-
-        self.game_next_step()
+        self.game_update()
         
-        # time.sleep(0.05)
 
 
-game_rgb_guardian = gameRGBGuardian()
+game_rgb_guardian = gameColorGuardian()
 
 while True:
     game_rgb_guardian.main_loop()
