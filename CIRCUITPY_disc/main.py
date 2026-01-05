@@ -34,23 +34,29 @@ class gameColorGuardian():
         print("1D Game Color Guardian")
         print(40 * "*")
 
-        self.brightness = 0.1
+        # config
+        self.brightness = 0.8
         self.pixel_count = 144
-        self.hue = 0.0
+
+        self.bullet_speed = 0.008
+        self.target_speed_default = 0.2
+        self.targets_count_default = 5
+        self.success_duration = 5.0
+        
+        # internal variables
         self.state = self.GAME_STANDBY
+        self.success_start = 0
+        self.hue = 0.0
 
         self.bullet_color = CRGB(0,0,0)
         self.bullet_position = 0
-
         self.bullet_last_update = 0
-        self.bullet_speed = 0.01
-
-        self.target_last_update = 0
-        self.target_speed = 0.2
 
         self.targets = []
         self.target_position = 0
-
+        self.target_last_update = 0
+        self.target_speed = self.target_speed_default
+        self.targets_count = self.targets_count_default
 
         self.pixel_init()
         self.button_init()
@@ -96,6 +102,7 @@ class gameColorGuardian():
             self.bullet_set(CRGB(0,0,1.0))
         if not self.btnWHITE.value:
             self.game_start()
+            time.sleep(0.1)
 
 
     def standby_draw(self):
@@ -118,7 +125,7 @@ class gameColorGuardian():
         if self.hue > 1.0:
             self.hue = 0.0
         else:
-            self.hue += 0.001
+            self.hue += 0.005
 
     def bullet_set(self, color):
         self.pixels[self.bullet_position - 1 ] = CRGB(0,0,0).pack()
@@ -139,19 +146,22 @@ class gameColorGuardian():
                 self.bullet_position = 0
 
     def target_draw(self):
-        for i in range(len(self.targets)):
+        targets_count = len(self.targets)
+        for i in range(targets_count):
             self.pixels[self.target_position + i] = self.targets[i].pack()
-        if (self.target_position + len(self.targets)) < self.pixel_count:
-            self.pixels[self.target_position + len(self.targets) -1] = CRGB(0,0,0).pack()
+        last_pixel_position = self.target_position + targets_count
+        if (last_pixel_position) < self.pixel_count-1:
+            self.pixels[last_pixel_position] = CRGB(0,0,0).pack()
     
     def target_update(self):
         if (time.monotonic() - self.target_last_update) > self.target_speed:
             self.target_last_update = time.monotonic()
             self.target_position -= 1
+            # print(f"pixel_count {self.pixel_count}  len(targets) {len(self.targets)}  target_position  {self.target_position}  last_pixel_position {self.target_position + len(self.targets)}")
 
     def game_rest(self):
         self.targets = []
-        for i in range(10):
+        for i in range(self.targets_count):
             self.targets.append(
                 self.target_colors[
                     random.randrange(0, len(self.target_colors))
@@ -162,10 +172,20 @@ class gameColorGuardian():
         self.bullet_position = 0
 
         self.target_position = self.pixel_count - len(self.targets)
+        # print(f"target_position: '{self.target_position}'")
         self.pixels.fill(0)
   
     def game_start(self):
         print("start!")
+        self.targets_count = self.targets_count_default
+        self.target_speed = self.target_speed_default
+        self.game_rest()
+        self.state = self.GAME_RUNNING
+   
+    def game_start_next_level(self):
+        print("start next level...")
+        self.targets_count += 2
+        self.target_speed -= 0.05
         self.game_rest()
         self.state = self.GAME_RUNNING
 
@@ -176,9 +196,18 @@ class gameColorGuardian():
     
     def game_success(self):
         print("Yeah!")
-        self.pixels.fill(0)
+        self.success_start = time.monotonic()
         self.state = self.GAME_SUCCESS
+    
+    def game_success_update(self):
+        if (time.monotonic() - self.success_start) > self.success_duration:
+            self.game_start_next_level()
 
+
+    def game_draw(self):
+        self.bullet_draw()
+        self.target_draw()
+        self.pixels.show()
 
     def game_next_step(self):
         self.bullet_update()
@@ -196,7 +225,7 @@ class gameColorGuardian():
                 self.targets.pop(0)
                 self.bullet_color = CRGB(0)
                 self.bullet_position = 0
-                print(f"self.targets",self.targets)
+                # print(f"self.targets",self.targets)
                 if len(self.targets) <= 0:
                     self.game_success()
 
@@ -204,15 +233,14 @@ class gameColorGuardian():
         if self.state == self.GAME_STANDBY:
             self.standby_draw()
         elif self.state == self.GAME_RUNNING:
-            self.bullet_draw()
-            self.target_draw()
-            self.pixels.show()
+            self.game_draw()
             self.game_next_step()
         elif self.state == self.GAME_OVER:
             self.game_over()
         elif self.state == self.GAME_SUCCESS:
             self.rainbow_draw()
             self.rainbow_update()
+            self.game_success_update()
         self.pixels.show()
 
     def main_loop(self):
